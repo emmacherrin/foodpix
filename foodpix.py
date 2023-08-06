@@ -23,7 +23,6 @@ class DB:
             )
         ''')
 
-
         # Create the "dishes" table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS dishes (
@@ -181,6 +180,71 @@ class DB:
             # Convert the list of dishes to a JSON formatted string
             return json.dumps(dish_list)
             
+    def update_dish(self, dish_id, **kwargs):
+        # Build the SQL query dynamically based on the provided keyword arguments
+        sql_query = 'UPDATE dishes SET '
+        params = []
+
+        # Iterate through each keyword argument, add it to the query and SQL parameter list
+        for field, value in kwargs.items():
+            sql_query += f'{field} = ?, '
+            params.append(value)
+
+        # Remove the trailing comma and space from the query
+        sql_query = sql_query.rstrip(', ')
+
+        # Add the WHERE clause to update the specific dish with the given dish_id
+        sql_query += ' WHERE id = ?'
+        params.append(dish_id)
+
+        # Update the dishes table in the database
+        with sqlite3.connect(self.name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql_query, tuple(params))
             
-            
+    def update_restaurant(self, restaurant_id, **kwargs):
+        # Build the SQL query dynamically based on the provided keyword arguments
+        sql_query = 'UPDATE restaurants SET '
+        params = []
+
+        # Iterate through each keyword argument, add it to the query and SQL parameter list
+        for field, value in kwargs.items():
+            sql_query += f'{field} = ?, '
+            params.append(value)
+
+        # Add the WHERE clause to update the specific restaurant with the given restaurant_id
+        sql_query += 'WHERE id = ?'
+        params.append(restaurant_id)
+
+        # Update the restaurants table in the database
+        with sqlite3.connect(self.name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql_query, tuple(params))                
         
+    def add_restaurant(self, restaurant):
+        # Add a new restaurant to the 'restaurants' table
+        with sqlite3.connect(self.name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO restaurants (restaurant_name, address, cuisine, latitude, longitude, dish_ids)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (restaurant.restaurant_name, restaurant.address, restaurant.cuisine, restaurant.latitude, restaurant.longitude, ''))  # Initialize dish_ids as an empty string
+
+            # Get the ID of the newly added restaurant
+            restaurant_id = cursor.lastrowid
+
+        return restaurant_id
+
+    def add_dish(self, dish):
+        # Add a new dish to the 'dishes' table
+        with sqlite3.connect(self.name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO dishes (restaurant_id, image_url, dish_name, date, stars, dietary_restrictions)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (dish.restaurant_id, dish.image_url, dish.dish_name, dish.date, dish.stars, dish.dietary_restrictions))
+
+            # Get the ID of the newly added dish
+            dish_id = cursor.lastrowid
+
+        return dish_id
