@@ -51,17 +51,21 @@ def test_adding_restaurants():
     db = util_create_clear("restaurant_app.db")
   
     # Add restaraunts to the database
-    r1 = Restaurant("Spencer's Sandwiches", "26694 Humber St, Huntington Woods, MI", "American", "123.3", "321.3", "")
+    r1 = Restaurant(id=None, name="Spencer's Sandwiches", address="26694 Humber St, Huntington Woods, MI", cuisine="American", latitude="123.3", longitude="321.3")
     db.add_restaurant(r1)
-    r2 = Restaurant("Marni's Meatballs", "123 Huntington St, Cleveland, Ohio", "American", "123.3", "321.3", "")
+
+    r2 = Restaurant(id=None, name="Marni's Meatballs", address="123 Huntington St, Cleveland, Ohio", cuisine="American", latitude="123.3", longitude="321.3")
     db.add_restaurant(r2)
     
     # Get one restaurant
     print("\n\n RESTAURANT \n")
-    print(db.get_restaurant(r1.id))
+    print(db.get_restaurant(r1.id).to_dict())
     
     # Get all restaurants
-    print(db.get_all_restaurants())
+    all_restaurants = db.get_all_restaurants()
+    restaurant_dicts = [restaurant.to_dict() for restaurant in all_restaurants]
+    print(json.dumps(restaurant_dicts))
+
     
 def test_adding_dishes():
     """_summary_
@@ -91,10 +95,10 @@ def test_adding_dishes():
     
     # Should print each dish as a list and should update respective restaurants
     print("\n\n DISHES \n")
-    print(db.get_all_dishes())
+    print(json.dumps(db.get_all_dishes()))
     
     print("\n\n RESTAURANTS \n")
-    print(db.get_all_restaurants())
+    print(json.dumps(db.get_all_restaurants()))
     
 def test_get_dishes_from_restaurant():
     # Create a new connection to the database, clear everything that is in it and start fresh
@@ -106,13 +110,17 @@ def test_get_dishes_from_restaurant():
     print(db.get_all_dishes())
     
     print("Restaurant 1")
-    print(db.get_dishes_from_restaraunt(restaurants[0].id))  
+    print(json.dumps(db.get_dishes_from_restaraunt(restaurants[0].id)))  
     
     print("Restaurant 2")  
-    print(db.get_dishes_from_restaraunt(restaurants[1].id))    
-        
+    print(json.dumps(db.get_dishes_from_restaraunt(restaurants[1].id)))    
+
+
 def main():
-   test_get_dishes_from_restaurant()
+   test_adding_restaurants()
+   # test_adding_dishes()
+   #test_get_dishes_from_restaurant()
+
 
 if __name__ == "__main__":
     main()

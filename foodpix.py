@@ -58,9 +58,9 @@ class DB:
             restaurant_objects = []
             for restaurant_data in restaurants:
                 restaurant_id = restaurant_data[0]  # Assuming ID is the first column
-                # Use the get_restaurant function to retrieve the restaurant details
-                restaurant_details = self.get_restaurant(restaurant_id)
-                restaurant_objects.append(restaurant_details)
+                # Use the get_restaurant function to retrieve the restaurant object
+                restaurant_object = self.get_restaurant(restaurant_id)
+                restaurant_objects.append(restaurant_object)
 
             return restaurant_objects
     
@@ -97,7 +97,7 @@ class DB:
             dishes_list = []
             for dish in dishes:
                 dish_obj = Dish(*dish)
-                dishes_list.append(dish_obj.to_dict())
+                dishes_list.append(dish_obj)
 
             return dishes_list
 
@@ -120,14 +120,24 @@ class DB:
             dish_id, restaurant_id, image_url, dish_name, date, stars, dietary_restrictions = dish_in_db
 
             # Create a Dish object
-            dish_obj = Dish(id=dish_id, restaurant_id=restaurant_id, image_url=image_url,
-                            dish_name=dish_name, date=date, stars=stars,
-                            dietary_restrictions=utility.listify(dietary_restrictions))
+            return Dish(id=dish_id, restaurant_id=restaurant_id, image_url=image_url,
+                        dish_name=dish_name, date=date, stars=stars,
+                        dietary_restrictions=utility.listify(dietary_restrictions))
 
-            # Convert the Dish object to a dict representation
-            return dish_obj.to_dict()
     
     def get_restaurant(self, restaurant_id):
+        """Retrieve details of a restaurant with the provided ID
+    
+        Args:
+            restaurant_id (str): The ID of the restaurant to retrieve.
+            
+        Returns:
+            dict: A dictionary containing the details of the retrieved restaurant.
+            
+        Raises:
+            LookupError: If the specified restaurant ID does not exist in the database.
+        """
+        
         # Use context manager for the database connection
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
@@ -143,13 +153,24 @@ class DB:
             if not restaurant_in_db:
                 raise LookupError(f"Restaurant with ID {restaurant_id} not found.")
             
-            # Save the dish that has been selected as a json dictionary
-            restaurant_obj = Restaurant(*restaurant_in_db)
-            restaurant_json = restaurant_obj.to_dict()
-            
-            return restaurant_json
+            # Return this restaurant object
+            return Restaurant(*restaurant_in_db)
+   
     
     def get_dishes_from_restaraunt(self, restaurant_id):
+        """Returns a list of dishes associated with a given restaurant ID.
+    
+        Args:
+            restaurant_id (str): The ID of the restaurant from which to retrieve dishes.
+            
+        Returns:
+            List: A list of dishes associated with the restaurant.
+            
+        Raises:
+            ValueError: If the specified restaurant ID does not exist in the database.
+            LookupError: If the restaurant does not have any associated dish IDs.
+        """
+        
         # Use context manager for database connection
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
@@ -181,9 +202,9 @@ class DB:
                 curr_dish = self.get_dish(dish_id)
                 dish_list.append(curr_dish)
 
-            # Convert the list of dishes to a JSON formatted string
-            return json.dumps(dish_list)
-            
+            # Return the list of dishes
+            return dish_list
+                
     def update_dish(self, dish_id, **kwargs):
         # Build the SQL query dynamically based on the provided keyword arguments
         sql_query = 'UPDATE dishes SET '
@@ -191,6 +212,9 @@ class DB:
 
         # Iterate through each keyword argument, add it to the query and SQL parameter list
         for field, value in kwargs.items():
+            if field == 'dietary_restrictions':
+                # If the field is 'dietary_restrictions', stringify the value 
+                value = utility.stringify(value)
             sql_query += f'{field} = ?, '
             params.append(value)
 
@@ -205,7 +229,7 @@ class DB:
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
             cursor.execute(sql_query, tuple(params))
-            
+                
     def update_restaurant(self, restaurant_id, **kwargs):
         # Build the SQL query dynamically based on the provided keyword arguments
         sql_query = 'UPDATE restaurants SET '
@@ -253,6 +277,9 @@ class DB:
 
             # Convert existing_dish_ids to a list using the listify utility function
             dish_id_list = utility.listify(existing_dish_ids)
+            
+            # Remove any NONE dish ids so there aren't any stray commas
+            dish_id_list = [dish_id for dish_id in dish_id_list if dish_id]
 
             # Check if the dish ID is already in the list
             if str(dish.id) not in dish_id_list:

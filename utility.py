@@ -18,6 +18,9 @@ def stringify(string_or_list):
     # If the input is a list, join the elements with commas and return the resulting string
     elif isinstance(string_or_list, list):
         return ', '.join(str(item) for item in string_or_list)
+    # If it's a tuple, join the elements with commas and return the resulting string
+    elif isinstance(string_or_list, list):
+        return ', '.join(str(item) for item in string_or_list)
     # Return an empty string by default (should never get here)
     else:
         return ''
