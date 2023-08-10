@@ -4,11 +4,7 @@ from dish import Dish
 class DB:
     def __init__(self, name):
         self.name = name
-        self.restaurants_view = "RestaurantsNoIDs"
-        self.dishes_view = "DishesNoIDs"
-        
         self.create_db()
-        self.create_view()
         
     def create_db(self):
         # Create a connection to the SQLite database
@@ -45,39 +41,6 @@ class DB:
         # Commit the changes and close the connection
         conn.commit()
         conn.close()
-    
-    def create_view(self):
-        with sqlite3.connect(self.name) as conn:
-            cursor = conn.cursor()
-            
-            # Create a view for the restaurants without IDs included
-            cursor.execute('''
-                CREATE VIEW RestaurantsNoIDs AS
-                SELECT
-                    restaurant_name,
-                    address,
-                    cuisine,
-                    latitude,
-                    longitude,
-                    dish_ids
-                FROM
-                    restaurants;
-                ''')
-            
-             # Create a view for dishes without IDs included
-            cursor.execute('''
-                CREATE VIEW DishesNoIDs AS
-                SELECT
-                    restaurant_id,
-                    image_url,
-                    dish_name,
-                    date,
-                    stars,
-                    dietary_restrictions
-                FROM
-                    dishes;
-            ''')    
-            
                 
     def clear_db(self):
         # If the database file already exists, delete it to start fresh
@@ -149,23 +112,18 @@ class DB:
             ''', (dish_id,))
 
             dish_in_db = cursor.fetchone()
-            
-            #TODO: Raise an error if the dish wasn't found
-            
-            # Extract the individual fields from the tuple
+
+            if dish_in_db is None:
+                raise ValueError(f"Dish with ID {dish_id} not found in the database")
+
+            # Unpack the dish data
             dish_id, restaurant_id, image_url, dish_name, date, stars, dietary_restrictions = dish_in_db
-            
-            # Create a Dish object and pass the extracted data
-            dish_obj = Dish(
-                id=dish_id,
-                restaurant_id=restaurant_id,
-                image_url=image_url,
-                dish_name=dish_name,
-                date=date,
-                stars=stars,
-                dietary_restrictions=dietary_restrictions.split(", ") if dietary_restrictions else []
-            )
-            
+
+            # Create a Dish object
+            dish_obj = Dish(id=dish_id, restaurant_id=restaurant_id, image_url=image_url,
+                            dish_name=dish_name, date=date, stars=stars,
+                            dietary_restrictions=utility.listify(dietary_restrictions))
+
             # Convert the Dish object to a dict representation
             return dish_obj.to_dict()
     
@@ -191,18 +149,22 @@ class DB:
             
             return restaurant_json
     
-    def get_dishes_from_restaraunt(restaraunt_id, self):
+    def get_dishes_from_restaraunt(self, restaurant_id):
         # Use context manager for database connection
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
             
             # Get the restaurant so we can access its Dish IDs
             cursor.execute('''
-                    SELECT dish_ids FROM restaraunts WHERE id = ?
-                ''', (restaraunt_id,))
+                    SELECT dish_ids FROM restaurants WHERE id = ?
+                ''', (restaurant_id,))
+            
+            dish_ids_tuple = cursor.fetchone()   
+
+            if dish_ids_tuple is None:
+                raise ValueError(f"Dish with ID {dish_id} not found in the database")
 
             # Gets a tuple whose first element is the dish_ids represented as a comma separated string
-            dish_ids_tuple = cursor.fetchone()   
             
             # If there are no IDs raise an error-- each restaurant must have a list of dish_ids.
             if len(dish_ids_tuple) == 0:
@@ -212,6 +174,9 @@ class DB:
             
             # Iterate through each dish and add it to the list of dishes for this particular restaurant
             for dish_id in dish_ids_tuple[0].split(","):
+                # First ID will be empty, so continue to next iteration with real ID
+                if dish_id is "":
+                    continue
                 dish_id = dish_id.strip()
                 curr_dish = self.get_dish(dish_id)
                 dish_list.append(curr_dish)

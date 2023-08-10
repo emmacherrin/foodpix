@@ -9,12 +9,39 @@ def util_create_clear(db_name):
     db.create_db()
     return db
 
+def util_restaurants_and_dishes(db):
+    # Initialize restaurants and add them to database
+    restaurants = [
+        Restaurant(None, "Spencer's Sandwiches", "26694 Humber St, Huntington Woods, MI", "American", "123.3", "321.3", ""),
+        Restaurant(None, "Marni's Meatballs", "123 Huntington St, Cleveland, Ohio", "American", "123.3", "321.3", "")
+    ]
+    
+    for restaurant in restaurants:
+        db.add_restaurant(restaurant)
+        
+    # Initialize 9 dishes and add them to database
+    dishes = [
+        Dish(None, restaurants[0].id, "Turkey Club Sandwich", "image_test.jpg", "14-07-2023", 4, ""),
+        Dish(None, restaurants[1].id, "Penne Alfredo", "image_test1.jpg", "12-05-2023", 5, ["vegetarian"]),
+        Dish(None, restaurants[0].id, "Grilled Cheese", "image_test2.jpg", "12-05-2023", 3, ["vegetarian"]),
+        Dish(None, restaurants[1].id, "Spaghetti Bolognese", "image_test3.jpg", "15-07-2023", 4, ""),
+        Dish(None, restaurants[0].id, "BLT Sandwich", "image_test4.jpg", "18-06-2023", 4, ""),
+        Dish(None, restaurants[1].id, "Fettuccine Alfredo", "image_test5.jpg", "20-06-2023", 5, ["vegetarian", "gluten free"]),
+        Dish(None, restaurants[0].id, "Chicken Avocado Wrap", "image_test6.jpg", "22-06-2023", 4, []),
+        Dish(None, restaurants[0].id, "Veggie Wrap", "image_test7.jpg", "22-06-2023", 4, ["vegetarian", "vegan"]),
+        Dish(None, restaurants[1].id, "Rigatoni Carbonara", "image_test8.jpg", "23-06-2023", 5, [])
+    ]
+    
+    for dish in dishes:
+        db.add_dish(dish)
+    return (restaurants, dishes) # Tuple storing restaurants and dishes
+
 def test_util_listify():
     str1 = "Emma, Brie, Spencer"
     list1 = utility.listify(str1)
     print(list1)
     print(utility.stringify(list1))
-    
+
 def test_adding_restaurants():
     """_summary_
     Creates a database, adds two restaurants, and adds dishes
@@ -28,6 +55,10 @@ def test_adding_restaurants():
     db.add_restaurant(r1)
     r2 = Restaurant("Marni's Meatballs", "123 Huntington St, Cleveland, Ohio", "American", "123.3", "321.3", "")
     db.add_restaurant(r2)
+    
+    # Get one restaurant
+    print("\n\n RESTAURANT \n")
+    print(db.get_restaurant(r1.id))
     
     # Get all restaurants
     print(db.get_all_restaurants())
@@ -58,9 +89,6 @@ def test_adding_dishes():
     print("\n\n DISH \n")
     print(db.get_dish(d2_id))
     
-    print("\n\n RESTAURANT \n")
-    print(db.get_restaurant(r1_id))
-    
     # Should print each dish as a list and should update respective restaurants
     print("\n\n DISHES \n")
     print(db.get_all_dishes())
@@ -68,6 +96,24 @@ def test_adding_dishes():
     print("\n\n RESTAURANTS \n")
     print(db.get_all_restaurants())
     
+def test_get_dishes_from_restaurant():
+    # Create a new connection to the database, clear everything that is in it and start fresh
+    db = util_create_clear("restaurant_app.db")
+    
+    # Instantiates dishes and restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
 
+    print(db.get_all_dishes())
+    
+    print("Restaurant 1")
+    print(db.get_dishes_from_restaraunt(restaurants[0].id))  
+    
+    print("Restaurant 2")  
+    print(db.get_dishes_from_restaraunt(restaurants[1].id))    
+        
+def main():
+   test_get_dishes_from_restaurant()
 
-test_adding_dishes()   
+if __name__ == "__main__":
+    main()
+    
