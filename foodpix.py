@@ -1,10 +1,15 @@
-import sqlite3, os, json, restaurant
+import sqlite3, os, json, restaurant, utility
 from restaurant import Restaurant
 from dish import Dish
 class DB:
     def __init__(self, name):
         self.name = name
-    
+        self.restaurants_view = "RestaurantsNoIDs"
+        self.dishes_view = "DishesNoIDs"
+        
+        self.create_db()
+        self.create_view()
+        
     def create_db(self):
         # Create a connection to the SQLite database
         conn = sqlite3.connect(self.name)
@@ -13,7 +18,7 @@ class DB:
         # Create the "restaurants" table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS restaurants (
-                id INTEGER PRIMARY KEY,
+                id TEXT PRIMARY KEY,
                 restaurant_name TEXT NOT NULL,
                 address TEXT NOT NULL,
                 cuisine TEXT NOT NULL,
@@ -26,7 +31,7 @@ class DB:
         # Create the "dishes" table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS dishes (
-                id INTEGER PRIMARY KEY,
+                id TEXT PRIMARY KEY,
                 restaurant_id INTEGER NOT NULL,
                 image_url TEXT,
                 dish_name TEXT NOT NULL,
@@ -40,7 +45,40 @@ class DB:
         # Commit the changes and close the connection
         conn.commit()
         conn.close()
-        
+    
+    def create_view(self):
+        with sqlite3.connect(self.name) as conn:
+            cursor = conn.cursor()
+            
+            # Create a view for the restaurants without IDs included
+            cursor.execute('''
+                CREATE VIEW RestaurantsNoIDs AS
+                SELECT
+                    restaurant_name,
+                    address,
+                    cuisine,
+                    latitude,
+                    longitude,
+                    dish_ids
+                FROM
+                    restaurants;
+                ''')
+            
+             # Create a view for dishes without IDs included
+            cursor.execute('''
+                CREATE VIEW DishesNoIDs AS
+                SELECT
+                    restaurant_id,
+                    image_url,
+                    dish_name,
+                    date,
+                    stars,
+                    dietary_restrictions
+                FROM
+                    dishes;
+            ''')    
+            
+                
     def clear_db(self):
         # If the database file already exists, delete it to start fresh
         if os.path.exists(self.name):
@@ -53,23 +91,20 @@ class DB:
             cursor.execute("SELECT * FROM restaurants")
             restaurants = cursor.fetchall()
 
-            # Convert the list of tuples to a list of Restaurant objects
+            # Convert the list of tuples to a list of JSON representations
             restaurant_objects = []
             for restaurant_data in restaurants:
-                # Create a Restaurant object and pass the data from the tuple
-                restaurant_obj = Restaurant(*restaurant_data)
-                # Append the JSON representation of the restaurant to the list
-                restaurant_json = restaurant_obj.to_json(restaurant_data[0])
-                restaurant_objects.append(restaurant_json)
+                restaurant_id = restaurant_data[0]  # Assuming ID is the first column
+                # Use the get_restaurant function to retrieve the restaurant details
+                restaurant_details = self.get_restaurant(restaurant_id)
+                restaurant_objects.append(restaurant_details)
 
             return restaurant_objects
     
     def get_all_dishes(self, order="default"):
-        conn = sqlite3.connect(self.name)
-        cursor = conn.cursor()
-
         # Use context manager for the database connection
         with sqlite3.connect(self.name) as conn:
+            cursor = conn.cursor()
             if order.lower() == "date_asc":
                 cursor.execute('''
                     SELECT * FROM dishes ORDER BY date ASC
@@ -94,13 +129,12 @@ class DB:
                 raise ValueError("Invalid order parameter. Use 'asc' for ascending or 'desc' for descending.")
 
             dishes = cursor.fetchall()
-            conn.close()
-
+            
             # Convert the list of tuples to a list of Dish objects
             dishes_list = []
             for dish in dishes:
                 dish_obj = Dish(*dish)
-                dishes_list.append(dish_obj.to_json(id=dish[0]))
+                dishes_list.append(dish_obj.to_dict())
 
             return dishes_list
 
@@ -108,27 +142,34 @@ class DB:
         # Use context manager for the database connection
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
-        
+
             # Get the dish where this unique ID in the parameter exists
             cursor.execute('''
                 SELECT * FROM dishes WHERE id = ?
             ''', (dish_id,))
 
             dish_in_db = cursor.fetchone()
-        
-            # Raise an exception if the dish with this ID can't be found 
-            if not dish_in_db:
-                raise LookupError(f"Dish with ID {dish_id} not found.")
-        
-            # Create a Dish object and pass the data from the tuple
-            dish_obj = Dish(*dish_in_db)
-        
-            # Convert the Dish object to a JSON representation
-            dish_json = dish_obj.to_json(id=dish_in_db[0])
-
-            return dish_json
-
-    def get_restaraunt(self, restaurant_id):
+            
+            #TODO: Raise an error if the dish wasn't found
+            
+            # Extract the individual fields from the tuple
+            dish_id, restaurant_id, image_url, dish_name, date, stars, dietary_restrictions = dish_in_db
+            
+            # Create a Dish object and pass the extracted data
+            dish_obj = Dish(
+                id=dish_id,
+                restaurant_id=restaurant_id,
+                image_url=image_url,
+                dish_name=dish_name,
+                date=date,
+                stars=stars,
+                dietary_restrictions=dietary_restrictions.split(", ") if dietary_restrictions else []
+            )
+            
+            # Convert the Dish object to a dict representation
+            return dish_obj.to_dict()
+    
+    def get_restaurant(self, restaurant_id):
         # Use context manager for the database connection
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
@@ -146,7 +187,7 @@ class DB:
             
             # Save the dish that has been selected as a json dictionary
             restaurant_obj = Restaurant(*restaurant_in_db)
-            restaurant_json = restaurant_obj.to_json(id=restaurant_in_db[0])
+            restaurant_json = restaurant_obj.to_dict()
             
             return restaurant_json
     
@@ -174,8 +215,6 @@ class DB:
                 dish_id = dish_id.strip()
                 curr_dish = self.get_dish(dish_id)
                 dish_list.append(curr_dish)
-            
-            conn.close()
 
             # Convert the list of dishes to a JSON formatted string
             return json.dumps(dish_list)
@@ -226,25 +265,38 @@ class DB:
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO restaurants (restaurant_name, address, cuisine, latitude, longitude, dish_ids)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (restaurant.restaurant_name, restaurant.address, restaurant.cuisine, restaurant.latitude, restaurant.longitude, ''))  # Initialize dish_ids as an empty string
-
-            # Get the ID of the newly added restaurant
-            restaurant_id = cursor.lastrowid
-
-        return restaurant_id
+                INSERT INTO restaurants (id, restaurant_name, address, cuisine, latitude, longitude, dish_ids)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (restaurant.id, restaurant.name, restaurant.address, restaurant.cuisine, str(restaurant.latitude), str(restaurant.longitude), ''))  # Initialize dish_ids as an empty string
+            
+        return restaurant.id
 
     def add_dish(self, dish):
         # Add a new dish to the 'dishes' table
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO dishes (restaurant_id, image_url, dish_name, date, stars, dietary_restrictions)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (dish.restaurant_id, dish.image_url, dish.dish_name, dish.date, dish.stars, dish.dietary_restrictions))
+                INSERT INTO dishes (id, restaurant_id, image_url, dish_name, date, stars, dietary_restrictions)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (dish.id, dish.restaurant_id, dish.image_url, dish.dish_name, dish.date, str(dish.stars), utility.stringify(dish.dietary_restrictions)))
 
-            # Get the ID of the newly added dish
-            dish_id = cursor.lastrowid
+        # Update the 'dish_ids' of the corresponding restaurant if the dish ID is not already in the list
+        with sqlite3.connect(self.name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT dish_ids FROM restaurants WHERE id = ?', (dish.restaurant_id,))
+            existing_dish_ids = cursor.fetchone() # Gets a tuple with the existing dish IDs
 
-        return dish_id
+            # Convert existing_dish_ids to a list using the listify utility function
+            dish_id_list = utility.listify(existing_dish_ids)
+
+            # Check if the dish ID is already in the list
+            if str(dish.id) not in dish_id_list:
+                dish_id_list.append(str(dish.id))
+                
+            # Join the updated dish_ids list back into a comma-separated string using the stringify utility function
+            updated_dish_ids = utility.stringify(dish_id_list)
+
+            # Update the 'dish_ids' of the restaurant
+            cursor.execute('UPDATE restaurants SET dish_ids = ? WHERE id = ?', (updated_dish_ids, dish.restaurant_id))
+
+        return dish.id
