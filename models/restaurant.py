@@ -1,6 +1,6 @@
 import sqlite3, os, json
 from uuid import UUID, uuid4
-from dish import Dish
+from models.dish import Dish
 from typing import Optional, List
 import utility
 class Restaurant:

@@ -1,6 +1,6 @@
-from restaurant import Restaurant
-from dish import Dish
-from foodpix import DB
+from models.restaurant import Restaurant
+from models.dish import Dish
+from database import DB
 import json, utility
 
 def util_create_clear(db_name):
@@ -61,11 +61,8 @@ def test_adding_restaurants():
     print("\n\n RESTAURANT \n")
     print(db.get_restaurant(r1.id).to_dict())
     
-    # Get all restaurants
-    all_restaurants = db.get_all_restaurants()
-    restaurant_dicts = [restaurant.to_dict() for restaurant in all_restaurants]
-    print(json.dumps(restaurant_dicts))
-
+    # Print all the restaurants 
+    print(utility.obj_to_json(db.get_all_restaurants()))
     
 def test_adding_dishes():
     """_summary_
@@ -95,10 +92,10 @@ def test_adding_dishes():
     
     # Should print each dish as a list and should update respective restaurants
     print("\n\n DISHES \n")
-    print(json.dumps(db.get_all_dishes()))
+    print(utility.obj_to_json(db.get_all_dishes()))
     
     print("\n\n RESTAURANTS \n")
-    print(json.dumps(db.get_all_restaurants()))
+    print(utility.obj_to_json(db.get_all_restaurants()))
     
 def test_get_dishes_from_restaurant():
     # Create a new connection to the database, clear everything that is in it and start fresh
@@ -107,21 +104,103 @@ def test_get_dishes_from_restaurant():
     # Instantiates dishes and restaurants with sample values
     restaurants, dishes = util_restaurants_and_dishes(db)
 
-    print(db.get_all_dishes())
+    #print(db.get_all_dishes())
     
     print("Restaurant 1")
-    print(json.dumps(db.get_dishes_from_restaraunt(restaurants[0].id)))  
+    print(utility.obj_to_json(db.get_dishes_from_restaraunt(restaurants[0].id)))  
     
     print("Restaurant 2")  
-    print(json.dumps(db.get_dishes_from_restaraunt(restaurants[1].id)))    
+    print(utility.obj_to_json(db.get_dishes_from_restaraunt(restaurants[1].id)))  
 
+def test_get_all_dishes_date_asc():
+    # Create a new connection to the database, clear everything that is in it and start fresh
+    db = util_create_clear("restaurant_app.db")
+    
+    # Instantiates dishes and restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    print(utility.obj_to_json(db.get_all_dishes("date_asc")))  
+
+def test_get_all_dishes_date_desc():
+    # Create a new connection to the database, clear everything that is in it and start fresh
+    db = util_create_clear("restaurant_app.db")
+    
+    # Instantiates dishes and restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    print(utility.obj_to_json(db.get_all_dishes("date_desc")))  
+
+def test_get_all_dishes_stars_asc():
+    # Create a new connection to the database, clear everything that is in it and start fresh
+    db = util_create_clear("restaurant_app.db")
+    
+    # Instantiates dishes and restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    print(utility.obj_to_json(db.get_all_dishes("stars_asc")))  
+
+def test_get_all_dishes_stars_desc():
+    # Create a new connection to the database, clear everything that is in it and start fresh
+    db = util_create_clear("restaurant_app.db")
+    
+    # Instantiates dishes and restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    print(utility.obj_to_json(db.get_all_dishes("stars_desc")))  
+
+def test_update_dish():
+    # Create a new connection to the database, clear everything that is in it and start fresh
+    db = util_create_clear("restaurant_app.db")
+    
+    # Instantiates dishes and restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    
+    # Gets a dish we are looking at updating
+    dish = dishes[3]
+    
+    # Print the original details about the dish for comparison
+    print("ORIGINAL DISH")
+    print(dish)
+    
+    #Update the dish with new values
+    db.update_dish(dish_id=dish.id, stars=5, dietary_restrictions=["nut-free", "dairy-free"])
+    print("UPDATED DISH")
+    print(db.get_dish(dish_id=dish.id))
+
+def test_update_restaurant():
+    # Create a new connection to the database, clear everything that is in it and start fresh
+    db = util_create_clear("restaurant_app.db")
+
+    # Instantiates restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    
+    print("ORIGINAL RESTAURANT")
+    print(utility.obj_to_json(db.get_restaurant(restaurants[0].id)))
+
+    
+    # Define new values to update the restaurant
+    new_values = {
+        'restaurant_name': "Updated Restaurant",
+        'address': "123 Updated St",
+        'cuisine': "Italian",
+        'longitude': 111.111,
+        'dish_ids': ""
+    }
+    
+    # Update the restaurant
+    db.update_restaurant(restaurant_id=restaurants[0].id, **new_values)
+    
+    # Print the updated restaurant details
+    updated_restaurant = db.get_restaurant(restaurants[0].id)
+    print("UPDATED RESTAURANT")
+    print(utility.obj_to_json(db.get_restaurant(updated_restaurant.id)))
 
 def main():
-   test_adding_restaurants()
-   # test_adding_dishes()
+   #test_adding_restaurants()
+   #test_adding_dishes()
    #test_get_dishes_from_restaurant()
-
-
+   #test_get_all_dishes_date_asc()
+   #test_get_all_dishes_date_desc()
+   #test_get_all_dishes_stars_asc()
+   #test_get_all_dishes_stars_desc()
+   #test_update_dish()
+   test_update_restaurant()
+   
 if __name__ == "__main__":
     main()
-    

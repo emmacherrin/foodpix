@@ -1,6 +1,6 @@
-import sqlite3, os, json, restaurant, utility
-from restaurant import Restaurant
-from dish import Dish
+import sqlite3, os, json, models.restaurant as restaurant, utility
+from models.restaurant import Restaurant
+from models.dish import Dish
 class DB:
     def __init__(self, name):
         self.name = name
@@ -29,8 +29,8 @@ class DB:
             CREATE TABLE IF NOT EXISTS dishes (
                 id TEXT PRIMARY KEY,
                 restaurant_id INTEGER NOT NULL,
-                image_url TEXT,
                 dish_name TEXT NOT NULL,
+                image_url TEXT,
                 date TEXT,
                 stars INTEGER,
                 dietary_restrictions TEXT, 
@@ -196,7 +196,7 @@ class DB:
             # Iterate through each dish and add it to the list of dishes for this particular restaurant
             for dish_id in dish_ids_tuple[0].split(","):
                 # First ID will be empty, so continue to next iteration with real ID
-                if dish_id is "":
+                if dish_id == "":
                     continue
                 dish_id = dish_id.strip()
                 curr_dish = self.get_dish(dish_id)
@@ -240,15 +240,18 @@ class DB:
             sql_query += f'{field} = ?, '
             params.append(value)
 
+        # Remove the trailing comma and space from the query
+        sql_query = sql_query.rstrip(', ')
+
         # Add the WHERE clause to update the specific restaurant with the given restaurant_id
-        sql_query += 'WHERE id = ?'
+        sql_query += ' WHERE id = ?'
         params.append(restaurant_id)
 
         # Update the restaurants table in the database
         with sqlite3.connect(self.name) as conn:
             cursor = conn.cursor()
-            cursor.execute(sql_query, tuple(params))                
-        
+            cursor.execute(sql_query, tuple(params))             
+   
     def add_restaurant(self, restaurant):
         # Add a new restaurant to the 'restaurants' table
         with sqlite3.connect(self.name) as conn:
@@ -292,3 +295,4 @@ class DB:
             cursor.execute('UPDATE restaurants SET dish_ids = ? WHERE id = ?', (updated_dish_ids, dish.restaurant_id))
 
         return dish.id
+

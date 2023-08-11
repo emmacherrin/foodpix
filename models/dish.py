@@ -22,8 +22,8 @@ class Dish:
         data = {
             "id": self.id,
             "restaurant_id": self.restaurant_id,
-            "image_url": self.image_url,
             "dish_name": self.dish_name,
+            "image_url": self.image_url,
             "date": self.date,
             "stars": self.stars,
             "dietary_restrictions": self.dietary_restrictions
