@@ -1,6 +1,6 @@
 import sqlite3, os, json
 from uuid import UUID, uuid4
-from models.dish import Dish
+from .dish import Dish
 from typing import Optional, List
 import utility
 class Restaurant:
@@ -15,6 +15,9 @@ class Restaurant:
         self.latitude = latitude
         self.longitude = longitude
         self.dish_ids = utility.listify(dish_ids)
+    
+    def __str__(self):
+        return json.dumps(self.to_dict(), indent=4)
         
     def to_dict(self):
         data = {

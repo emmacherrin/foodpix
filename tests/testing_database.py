@@ -1,8 +1,8 @@
 from models.restaurant import Restaurant
 from models.dish import Dish
 from database import DB
-import json, utility
-
+import json, utility, unittest, sqlite3
+            
 def util_create_clear(db_name):
     db = DB(db_name)
     db.clear_db()
@@ -191,6 +191,62 @@ def test_update_restaurant():
     print("UPDATED RESTAURANT")
     print(utility.obj_to_json(db.get_restaurant(updated_restaurant.id)))
 
+def test_delete_dish():
+    db = util_create_clear("restaurant_app.db")
+
+    # Instantiates restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    
+    #We are going to delete dish "Chicken Avocado Wrap" at index 6 from restaurant "Spencer's Sandwiches" at index 0
+    
+    # Original dishes at Spencer's sandwiches
+    print("ORIGINAL DISHES AT SPENCER'S SANDWICHES")
+    print(f"Restaurant ID: {restaurants[0].id}") #TODO: Delete this line
+    original_dishes = db.get_dishes_from_restaurant(restaurants[0].id)
+    print(utility.obj_to_json(original_dishes))
+    
+    db.delete_dish(dishes[6].id)
+    
+    print("UPDATED DISHES AT SPENCER'S SANDWICHES")
+    print(utility.obj_to_json(db.get_dishes_from_restaurant(restaurants[0].id)))
+
+def test_delete_restaurant():
+    db = util_create_clear("restaurant_app.db")
+
+    # Instantiate restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+    
+    # Add a new restaurant to test deletion
+    new_restaurant = Restaurant("Test Restaurant", "123 Test St", "Test Cuisine", 0.0, 0.0, [])
+    db.add_restaurant(new_restaurant)
+    
+    # Add dishes to the new restaurant
+    for i in range(3):
+        new_dish = Dish("Test Dish " + str(i), new_restaurant.id, "test.jpg", "Test Dish Description", "01-01-2023", i, [])
+        db.add_dish(new_dish)
+    
+    print("ORIGINAL DISHES AT TEST RESTAURANT")
+    print(f"Restaurant ID: {new_restaurant.id}")
+    original_dishes = db.get_dishes_from_restaurant(new_restaurant.id)
+    print(utility.obj_to_json(original_dishes))
+    
+    db.delete_restaurant(new_restaurant.id)
+    
+    print("RESTAURANTS AFTER DELETION")
+    print(utility.obj_to_json(db.get_all_restaurants()))
+
+def test_get_dishes_with_dietary_restrictions():
+    db = util_create_clear("restaurant_app.db")
+
+    # Instantiate restaurants with sample values
+    restaurants, dishes = util_restaurants_and_dishes(db)
+
+    conditions = ["dietary_restrictions LIKE ?", "stars < ?",]
+    parameters = ("%vegetarian%", 5)
+    result = db.custom_query('dishes', conditions, parameters=parameters)
+    for dish in result:
+        print(dish.dish_name, dish.dietary_restrictions, dish.stars)
+    
 def main():
    #test_adding_restaurants()
    #test_adding_dishes()
@@ -200,7 +256,10 @@ def main():
    #test_get_all_dishes_stars_asc()
    #test_get_all_dishes_stars_desc()
    #test_update_dish()
-   test_update_restaurant()
+   #test_update_restaurant()
+   #test_delete_dish()
+   #test_delete_restaurant()
+   test_get_dishes_with_dietary_restrictions()
    
 if __name__ == "__main__":
     main()
