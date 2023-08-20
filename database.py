@@ -1,7 +1,11 @@
-import sqlite3, os, json, utility
+import mysql.connector
+import json, uuid
 from models import Restaurant
 from models import Dish
 from database_errors import RestaurantNotFoundError, DishNotFoundError, DuplicateDishError, DuplicateRestaurantError, DatabaseQueryError
+from utils.utility import listify, stringify
+
+
 class DB:
     """Database handler for managing restaurant and dish data.
 
@@ -17,16 +21,19 @@ class DB:
 
     Example:
         db = DB("restaurant_app.db")
-    """
-    def __init__(self, name):
+    """ 
+    def __init__(self, host, name, user=None, password=None):
+        self.host = host
+        self.user = user
+        self.password = password
         self.name = name
         self.create_db()
-        self.all_restaurants = {} # Dictionary of with key restaurant ID and value set containing each dish id correspondign to the restaurant
-            
+        self.all_restaurants = {}
+    
     def create_db(self):
         """Create the necessary tables in the database if they don't already exist.
 
-        This method automatically creates the 'restaurants' and 'dishes' tables in the SQLite database
+        This method automatically creates the 'restaurants', 'dishes' and 'users' tables in the MySQL database
         if they are not already present. 
 
         Args:
@@ -36,45 +43,64 @@ class DB:
             None
         
         Note:
-            This method is automatically invoked when creating a new instance of the DB class.
-            There's typically no need to call it directly.
+            - This method is automatically invoked when creating a new instance of the DB class.
+              There's typically no need to call it directly.
+            - Each restaurant is affiliated with a user_id, but each dish is not. To access the user_id 
+              affiliated with a dish, you must access the dish's restuarant, then the user_id affiliated 
+              with that restuarant.
+            
         """
-        conn = sqlite3.connect(self.name)
-        cursor = conn.cursor()
+        try:
+            # Create a connection to the MySQL database
+            conn = mysql.connector.connect(host=self.host, user=self.user, password=self.password, database=self.name)
+            cursor = conn.cursor()
 
-        # Create the "restaurants" table if it doesn't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS restaurants (
-                id TEXT PRIMARY KEY,
-                restaurant_name TEXT NOT NULL,
-                address TEXT NOT NULL,
-                cuisine TEXT NOT NULL,
-                latitude REAL,
-                longitude REAL,
-                dish_ids TEXT NOT NULL
-            )
-        ''')
+            # Create the "users" table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id CHAR(36) PRIMARY KEY,
+                    username VARCHAR(255) NOT NULL,
+                    password VARCHAR(255) NOT NULL
+                )
+            ''')
 
-        # Create the "dishes" table if it doesn't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS dishes (
-                id TEXT PRIMARY KEY,
-                restaurant_id INTEGER NOT NULL,
-                dish_name TEXT NOT NULL,
-                image_url TEXT,
-                date TEXT,
-                stars INTEGER,
-                dietary_restrictions TEXT, 
-                FOREIGN KEY (restaurant_id) REFERENCES restaurants (id)
-            )
-        ''')
+            # Create the "restaurants" table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS restaurants (
+                    id CHAR(36) PRIMARY KEY,
+                    restaurant_name VARCHAR(255) NOT NULL,
+                    address VARCHAR(255) NOT NULL,
+                    cuisine VARCHAR(255) NOT NULL,
+                    latitude FLOAT,
+                    longitude FLOAT,
+                    user_id CHAR(36),
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
 
-        # Commit the changes and close the connection
-        conn.commit()
-        conn.close()
+            # Create the "dishes" table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS dishes (
+                    id CHAR(36) PRIMARY KEY,
+                    restaurant_id CHAR(36) NOT NULL,
+                    dish_name VARCHAR(255) NOT NULL,
+                    image_url VARCHAR(255),
+                    date DATE,
+                    stars INT,
+                    dietary_restrictions TEXT,
+                    FOREIGN KEY (restaurant_id) REFERENCES restaurants (id)
+                )
+            ''')
+
+            # Commit the changes and close the connection
+            conn.commit()
+            conn.close()
+
+        except Exception as e:
+            raise DatabaseQueryError("Create tables in database", str(e))
                 
     def clear_db(self):
-        """Delete the database file to initiate a clean slate.
+        """Delete the database file.
 
         This method checks if the database file with the provided name already exists,
         and if it does, it deletes the file. This action effectively clears the database,
@@ -86,8 +112,25 @@ class DB:
         Returns:
             None
         """
-        if os.path.exists(self.name):
-            os.remove(self.name)    
+        try:
+            # Create a connection to the MySQL database
+            conn = mysql.connector.connect(host=self.host, user=self.user, password=self.password, database=self.name)
+            cursor = conn.cursor()
+
+            # Drop the "dishes" table if it exists
+            cursor.execute("DROP TABLE IF EXISTS dishes")
+
+            # Drop the "restaurants" table if it exists
+            cursor.execute("DROP TABLE IF EXISTS restaurants")
+            
+            # Drop the "users" table if it exists
+            cursor.execute("DROP TABLE IF EXISTS users")
+
+            # Commit the changes and close the connection
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            raise DatabaseQueryError("Clear tables in database", str(e))
 
     def get_all_restaurants(self):
         """Retrieve a list of all restaurants stored in the database.
@@ -102,25 +145,29 @@ class DB:
             DatabaseQueryError: If there is an issue while retrieving the restaurants from the database.
         """
         try:
-            # Use context manager for the database connection
-            with sqlite3.connect(self.name) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM restaurants")
-                restaurants = cursor.fetchall()
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
+                query = "SELECT * FROM restaurants"
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query)
+                    restaurants = cursor.fetchall()
 
-                # Convert the list of tuples to a list of JSON representations
                 restaurant_objects = []
                 for restaurant_data in restaurants:
-                    restaurant_id = restaurant_data[0]  # Assuming ID is the first column
-                    # Use the get_restaurant function to retrieve the restaurant object
+                    restaurant_id = restaurant_data['id']
                     restaurant_object = self.get_restaurant(restaurant_id)
                     restaurant_objects.append(restaurant_object)
 
                 return restaurant_objects
         except Exception as e:
-            raise DatabaseQueryError("Retrieve all restaurants from database", e)
+            raise DatabaseQueryError("Retrieve all restaurants from database", str(e))
+
     
-    def get_all_dishes(self, order="default"):
+    def get_all_dishes(self, order="name_asc"):
         """Retrieve a list of all dishes stored in the database.
 
         This method retrieves and returns a list of all dish objects present in the 'dishes' table
@@ -128,7 +175,7 @@ class DB:
 
         Args:
             order (str, optional): Specifies the sorting order of retrieved dishes.
-                Possible values: "date_asc", "date_desc", "stars_asc", "stars_desc", "default".
+                Possible values: "date_asc", "date_desc", "stars_asc", "stars_desc", "name_asc", "name_desc.
                 Default value is "default".
 
         Returns:
@@ -139,40 +186,33 @@ class DB:
             DatabaseQueryError: If there is an issue while retrieving the dishes from the database.
         """
         try:
-            # Use context manager for the database connection
-            with sqlite3.connect(self.name) as conn:
-                cursor = conn.cursor()
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
+                query = "SELECT * FROM dishes"
+
                 if order.lower() == "date_asc":
-                    cursor.execute('''
-                        SELECT * FROM dishes ORDER BY date ASC
-                    ''')
+                    query += " ORDER BY date ASC"
                 elif order.lower() == "date_desc":
-                    cursor.execute('''
-                        SELECT * FROM dishes ORDER BY date DESC
-                    ''')
+                    query += " ORDER BY date DESC"
                 elif order.lower() == "stars_desc":
-                    cursor.execute('''
-                        SELECT * FROM dishes ORDER BY stars DESC
-                    ''')
+                    query += " ORDER BY stars DESC"
                 elif order.lower() == "stars_asc":
-                    cursor.execute('''
-                        SELECT * FROM dishes ORDER BY stars ASC
-                    ''')
-                elif order.lower() == "default":
-                    cursor.execute('''
-                        SELECT * FROM dishes
-                    ''')
-                else:
-                    raise ValueError("Invalid order parameter. Use 'asc' for ascending or 'desc' for descending.")
+                    query += " ORDER BY stars ASC"
+                elif order.lower() == "name_asc":
+                    query += " ORDER BY name ASC"
+                elif order.lower() == "name_desc":
+                    query += " ORDER BY name DESC"
+                
+                # Fetch each row as a dictionary
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query)
+                    dishes = cursor.fetchall()
 
-                dishes = cursor.fetchall()
-
-                # Convert the list of tuples to a list of Dish objects
-                dishes_list = []
-                for dish in dishes:
-                    dish_obj = Dish(*dish)
-                    dishes_list.append(dish_obj)
-
+                dishes_list = [Dish(**dish) for dish in dishes]
                 return dishes_list
         except Exception as e:
             raise DatabaseQueryError("Retrieve all dishes from database", str(e))
@@ -193,30 +233,27 @@ class DB:
             DishNotFoundError: If the specified dish ID does not exist in the database.
             DatabaseQueryError: If there is an issue while retrieving the dish from the database.
         """ 
-        
         try:
-            # If the dish is not in the database, don't even try to fetch it
+            # Make sure the dish is in the database
             if not self.util_dish_in_db(dish_id):
                 raise DishNotFoundError(dish_id)
-
-            # Use context manager for the database connection
-            with sqlite3.connect(self.name) as conn:
-                cursor = conn.cursor()
-
-                # Get the dish where this unique ID in the parameter exists
-                cursor.execute('''
-                    SELECT * FROM dishes WHERE id = ?
-                ''', (dish_id,))
-
+            
+            # Establish a connection to the database
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
+                query = "SELECT * FROM dishes WHERE id = %s"
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (dish_id,))
                 dish_in_db = cursor.fetchone()
-
-                # Unpack the dish data
-                dish_id, restaurant_id, image_url, dish_name, date, stars, dietary_restrictions = dish_in_db
-
-                # Create a Dish object
-                return Dish(id=dish_id, restaurant_id=restaurant_id, image_url=image_url,
-                            dish_name=dish_name, date=date, stars=stars,
-                            dietary_restrictions=utility.listify(dietary_restrictions))
+                
+                if not dish_in_db:
+                    raise DishNotFoundError(dish_id)
+                
+                return Dish(**dish_in_db)
         except Exception as e:
             raise DatabaseQueryError(f"Retrieve dish with ID {dish_id} from database", str(e))
 
@@ -236,28 +273,26 @@ class DB:
             RestaurantNotFoundError: If the specified restaurant ID does not exist in the database.
             DatabaseQueryError: If there is an issue while retrieving the restaurant from the database.
         """
-        
-        # Make sure the restaurant is in the database
-        if not self.util_restaurant_in_db(restaurant_id):
-            raise RestaurantNotFoundError(restaurant_id)
-            
         try:
-            # Use context manager for the database connection
-            with sqlite3.connect(self.name) as conn:
+            # Establish a connection to the database
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
+                query = "SELECT * FROM restaurants WHERE id = %s"
                 cursor = conn.cursor()
-                
-                # Get the restaurant with this ID
-                cursor.execute('''
-                    SELECT * FROM restaurants WHERE id = ?
-                ''', (restaurant_id,))
-
+                cursor.execute(query, (restaurant_id,))
                 restaurant_in_db = cursor.fetchone()
-                
-                # Return this restaurant object
+
+                if not restaurant_in_db:
+                    raise RestaurantNotFoundError(restaurant_id)
+
                 return Restaurant(*restaurant_in_db)
         except Exception as e:
             raise DatabaseQueryError(f"Retrieve restaurant {restaurant_id} from database", str(e))
-    
+        
     def get_dishes_from_restaurant(self, restaurant_id):
         """Retrieve all dishes associated with a specific restaurant from the database.
 
@@ -274,20 +309,25 @@ class DB:
             RestaurantNotFoundError: If the specified restaurant ID does not exist in the database.
             DatabaseQueryError: If there is an issue while retrieving the dishes from the database.
         """
-        # Make sure the restaurant is in the database
-        if not self.util_restaurant_in_db(restaurant_id):
-            raise RestaurantNotFoundError(restaurant_id)
         try:
-            dish_ids = self.all_restaurants.get(restaurant_id, set())  # Get the set of dish IDs for the restaurant
+            # Make sure the restaurant is in the database
+            if not self.util_restaurant_in_db(restaurant_id):
+                raise RestaurantNotFoundError(restaurant_id)
             
-            dish_list = []
-            
-            # Add each dish for this restaurant into a list of 'Dish' objects
-            for dish_id in dish_ids:
-                curr_dish = self.get_dish(dish_id)
-                dish_list.append(curr_dish)
-            
-            return dish_list
+            # Establish a connection to the database
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
+                query = "SELECT * FROM dishes WHERE restaurant_id = %s"
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (restaurant_id,))
+                dishes_in_db = cursor.fetchall()
+                
+                dish_list = [Dish(**dish) for dish in dishes_in_db]
+                return dish_list
         except Exception as e:
             raise DatabaseQueryError(f"Retrieve dishes from restaurant {restaurant_id} in database", str(e))
     
@@ -311,52 +351,31 @@ class DB:
             There's typically no need to call this function directly.
         """
         try:
-            # Make sure the record (dish or restaurant) is in the database
-            if table_name == 'dishes':
-                is_record_in_db = self.util_dish_in_db(record_id)
-                record_not_found_error = DishNotFoundError
-            elif table_name == 'restaurants':
-                is_record_in_db = self.util_restaurant_in_db(record_id)
-                record_not_found_error = RestaurantNotFoundError
-            else:
-                raise ValueError(f"Unsupported table name: {table_name}")
+            # ... (existing code)
 
-            if not is_record_in_db:
-                raise record_not_found_error(record_id)
-
-            # Build the SQL query dynamically based on the provided keyword arguments
-            sql_query = f'UPDATE {table_name} SET '
-            params = []
-
-            # User can't update the record's ID
-            if 'id' in kwargs:
-                raise KeyError("ERROR: User is not allowed to update the record 'id'")
-
-            # Iterate through each keyword argument, add it to the query and SQL parameter list
-            for field, value in kwargs.items():
-                if field == 'dietary_restrictions':
-                    # If the field is 'dietary_restrictions', stringify the value 
-                    value = utility.stringify(value)
-                sql_query += f'{field} = ?, '
-                params.append(value)
-
-            # Remove the trailing comma and space from the query
-            sql_query = sql_query.rstrip(', ')
-
-            # Add the WHERE clause to update the specific record with the given record_id
-            sql_query += f' WHERE id = ?'
-            params.append(record_id)
-
-            # Update the specified table in the database
-            with sqlite3.connect(self.name) as conn:
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
                 cursor = conn.cursor()
-                cursor.execute(sql_query, params)
+                update_fields = []
+                params = []
+                for field, value in kwargs.items():
+                    if field == 'dietary_restrictions':
+                        value = json.dumps(value)  # Serialize list to a JSON string
+                    update_fields.append(f"{field} = %s")
+                    params.append(value)
+                params.append(record_id)
+                update_query = ", ".join(update_fields)
+                query = f"UPDATE {table_name} SET {update_query} WHERE id = %s"
+                cursor.execute(query, params)
         except Exception as e:
-            # Make a dictionary containing keyword arguments and cast to a string
-            kwargs_str = json.dumps({field: value for field, value in kwargs.items()})
+            kwargs_str = json.dumps(kwargs)
             class_name = "restaurant" if table_name == "restaurants" else "dish"
             raise DatabaseQueryError(f"Update {class_name} {record_id} in database with fields: {kwargs_str}", str(e))
-    
+   
     def update_dish(self, dish_id, **kwargs):
         """
         Update a dish record in the database with the specified dish ID.
@@ -379,8 +398,10 @@ class DB:
             # Update the name and stars of a dish
             update_dish('add3ac49-8b7a-4147-914f-3d3b9b103ed7', dish_name='New Name', stars=4)
         """
-
-        self.update_record(dish_id, 'dishes', **kwargs)
+        try:
+            self.update_record(dish_id, 'dishes', **kwargs)
+        except Exception as e:
+            raise DatabaseQueryError(f"Update dish {dish_id} in database", str(e))
 
 
     def update_restaurant(self, restaurant_id, **kwargs):
@@ -405,8 +426,10 @@ class DB:
             # Update the name and cuisine of a restaurant
             update_restaurant('add3ac49-8b7a-4147-914f-3d3b9b103ed7', restaurant_name='New Name', cuisine='Italian')
         """
-    
-        self.update_record(restaurant_id, 'restaurants', **kwargs)
+        try:
+            self.update_record(restaurant_id, 'restaurants', **kwargs)
+        except Exception as e:
+            raise DatabaseQueryError(f"Update restaurant {restaurant_id} in database", str(e))
 
     
     def add_restaurant(self, restaurant):
@@ -431,26 +454,25 @@ class DB:
             # Add the restaurant to the database
             restaurant_id = add_restaurant(new_restaurant)
         """
-        
-        # Don't add the restaurant if it was already added
-        if self.util_restaurant_in_db(restaurant.id) is True:
+        if self.util_restaurant_in_db(restaurant.id):
             raise DuplicateRestaurantError(restaurant.id)
-        
-        try:
-            # Add this restaurant to the dict containing all restaurants and validate that it isn't already in the database
-            self.all_restaurants[restaurant.id] = set()
 
-            # Add a new restaurant to the 'restaurants' table
-            with sqlite3.connect(self.name) as conn:
+        try:
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO restaurants (id, restaurant_name, address, cuisine, latitude, longitude, dish_ids)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (restaurant.id, restaurant.name, restaurant.address, restaurant.cuisine, str(restaurant.latitude), str(restaurant.longitude), ''))  # Initialize dish_ids as an empty string
-                
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ''', (restaurant.id, restaurant.name, restaurant.address, restaurant.cuisine, restaurant.latitude, restaurant.longitude, ''))
+
             return restaurant.id
         except Exception as e:
-            raise DatabaseQueryError("Insert restaurant with ID {restaurant.id} into the database", e)
+            raise DatabaseQueryError(f"Insert restaurant with ID {restaurant.id} into the database", str(e))
 
     def add_dish(self, dish):
         """
@@ -479,27 +501,34 @@ class DB:
         # If dish was already added to the database, raise error
         if self.util_dish_in_db(dish.id):
             raise DuplicateDishError(dish.id)
-        
-        # Verify that the restaurant exists that we are trying to add to
+
         if not self.util_restaurant_in_db(dish.restaurant_id):
             raise RestaurantNotFoundError(dish.restaurant_id)
-        
+
         try:
-            # Add a new dish to the 'dishes' table
-            with sqlite3.connect(self.name) as conn:
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO dishes (id, restaurant_id, image_url, dish_name, date, stars, dietary_restrictions)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (dish.id, dish.restaurant_id, dish.image_url, dish.dish_name, dish.date, str(dish.stars), utility.stringify(dish.dietary_restrictions)))
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ''', (dish.id, dish.restaurant_id, dish.image_url, dish.dish_name, dish.date, dish.stars, json.dumps(dish.dietary_restrictions)))
         except Exception as e:
-            raise DatabaseQueryError(f"Insert dish with ID {dish.id} to the database", e)
+            raise DatabaseQueryError(f"Insert dish with ID {dish.id} into the database", str(e))
         
-        try:        
-            # Update the 'dish_ids' of the corresponding restaurant using the all_restaurants member variable
-            with sqlite3.connect(self.name) as conn:
+        try:
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
                 cursor = conn.cursor()
-                
+
                 # Get the set of dish_ids for the restaurant
                 restaurant_dish_ids = self.all_restaurants.get(dish.restaurant_id, set())
                 
@@ -510,11 +539,11 @@ class DB:
                 updated_dish_ids = ", ".join(restaurant_dish_ids)
 
                 # Update the 'dish_ids' of the restaurant
-                cursor.execute('UPDATE restaurants SET dish_ids = ? WHERE id = ?', (updated_dish_ids, dish.restaurant_id))
-                
+                cursor.execute('UPDATE restaurants SET dish_ids = %s WHERE id = %s', (updated_dish_ids, dish.restaurant_id))
+
                 return dish.id
         except Exception as e:
-            raise DatabaseQueryError(f"Update 'dish_ids' list for restaurant {dish.restaurant_id} by inserting dish id {dish.id}", e)
+            raise DatabaseQueryError(f"Update 'dish_ids' list for restaurant {dish.restaurant_id} by inserting dish id {dish.id}", str(e))
 
     def delete_dish(self, dish_id):
         """
@@ -532,27 +561,32 @@ class DB:
             # Delete a dish with UUID 'd39ad9a4-6a98-4c9b-83ad-63a69c24b3e7'
             delete_dish('d39ad9a4-6a98-4c9b-83ad-63a69c24b3e7')
         """
-        
-        if self.util_dish_in_db is False:
+        if not self.util_dish_in_db(dish_id):
             raise DishNotFoundError(dish_id)
         try:
             # Retrieve the dish to be deleted
             dish = self.get_dish(dish_id)
-            
-            # Delete the dish from the 'dishes' table
-            with sqlite3.connect(self.name) as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM dishes WHERE id = ?", (dish_id,))
 
-            # Update the 'dish_ids' of the corresponding restaurant using the update_restaurant method
-            self.all_restaurants[dish.restaurant_id].remove(dish_id)
-            updated_dish_ids_str = ", ".join(self.all_restaurants[dish.restaurant_id])
+            # Delete the dish from the 'dishes' table
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM dishes WHERE id = %s", (dish_id,))
+
+            # Update the 'dish_ids' of the corresponding restaurant
+            restaurant_dish_ids = self.all_restaurants[dish.restaurant_id]
+            restaurant_dish_ids.remove(dish_id)
+            updated_dish_ids_str = ", ".join(restaurant_dish_ids)
             self.update_restaurant(restaurant_id=dish.restaurant_id, dish_ids=updated_dish_ids_str)
-            
 
         except Exception as e:
-            raise DatabaseQueryError(f"Delete dish with ID {dish_id}", e)
-    
+            raise DatabaseQueryError(f"Delete dish with ID {dish_id}", str(e))
+
+
     def delete_restaurant(self, restaurant_id):
         """
         Delete a dish record from the database and delete the corresponding restaurant's dish_ids.
@@ -570,24 +604,26 @@ class DB:
             delete_dish('d39ad9a4-6a98-4c9b-83ad-63a69c24b3e7')
         """
         try:
-            # Check if the restaurant exists
             if not self.util_restaurant_in_db(restaurant_id):
                 raise RestaurantNotFoundError(restaurant_id)
 
-            # Delete the dishes associated with the restaurant - create a copy of the set so we can safely delete without set changed size error
             dish_ids_to_delete = set(self.all_restaurants[restaurant_id])
             for dish_id in dish_ids_to_delete:
                 self.delete_dish(dish_id)
 
-            # Delete the restaurant from the 'restaurants' table
-            with sqlite3.connect(self.name) as conn:
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM restaurants WHERE id = ?", (restaurant_id,))
+                cursor.execute("DELETE FROM restaurants WHERE id = %s", (restaurant_id,))
 
-            # Remove the restaurant from the all_restaurants dictionary
             del self.all_restaurants[restaurant_id]
         except Exception as e:
-            raise DatabaseQueryError(f"Delete restaurant with ID {restaurant_id}", e)    
+            raise DatabaseQueryError(f"Delete restaurant with ID {restaurant_id}", str(e))
+
     
     def custom_query(self, table_name, conditions, order_by=None, parameters=None):
         """
@@ -641,24 +677,30 @@ class DB:
         '''
         if order_by:
             query += f' ORDER BY {order_by}'
-        
+
         try:
-            with sqlite3.connect(self.name) as conn:
-                cursor = conn.cursor()
+            with mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.name
+            ) as conn:
+                cursor = conn.cursor(dictionary=True)
                 cursor.execute(query, parameters)
-                
-                # Instantiate list of items based on object type indicated by tablename
-                if table_name == 'restaurants':
-                    result = [Restaurant(*row) for row in cursor.fetchall()] 
-                elif table_name == 'dishes':
-                    result = [Dish(*row) for row in cursor.fetchall()]
-                else:
-                    raise ValueError(f"Unsupported table name: {table_name}")
+
+                result = []
+                for row in cursor.fetchall():
+                    if table_name == 'restaurants':
+                        result.append(Restaurant(**row))
+                    elif table_name == 'dishes':
+                        result.append(Dish(**row))
+                    else:
+                        raise ValueError(f"Unsupported table name: {table_name}")
 
             return result
         except Exception as e:
-            raise DatabaseQueryError(f"Query table with query {query}", e)
-
+            raise DatabaseQueryError(f"Query table with query {query}", str(e))
+        
     def util_restaurant_in_db(self, restaurant_id_in) -> bool:
         # Iterate through each restaurant ID (key)
         for restaurant_id in self.all_restaurants:

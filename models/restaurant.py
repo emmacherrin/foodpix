@@ -2,7 +2,7 @@ import sqlite3, os, json
 from uuid import UUID, uuid4
 from .dish import Dish
 from typing import Optional, List
-import utility
+import utils.utility as utility
 class Restaurant:
     def __init__(self, id: Optional[str] = None, name: Optional[str] = None,
                  address: Optional[str] = None, cuisine: Optional[str] = None,

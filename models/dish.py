@@ -1,5 +1,5 @@
 from typing import Optional, List
-import sqlite3, os, json, utility, uuid
+import sqlite3, os, json, utils.utility as utility, uuid
 from uuid import UUID, uuid4
 class Dish:
     def __init__(self, id: Optional[str] = None, restaurant_id: Optional[int] = None,

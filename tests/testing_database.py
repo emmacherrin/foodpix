@@ -1,7 +1,7 @@
 from models.restaurant import Restaurant
 from models.dish import Dish
 from database import DB
-import json, utility, unittest, sqlite3
+import json, utils.utility as utility, unittest, sqlite3
             
 def util_create_clear(db_name):
     db = DB(db_name)
@@ -258,8 +258,8 @@ def main():
    #test_update_dish()
    #test_update_restaurant()
    #test_delete_dish()
-   #test_delete_restaurant()
-   test_get_dishes_with_dietary_restrictions()
+   test_delete_restaurant()
+   #test_get_dishes_with_dietary_restrictions()
    
 if __name__ == "__main__":
     main()

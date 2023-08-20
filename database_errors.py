@@ -43,3 +43,20 @@ class DatabaseQueryError(Exception):
         self.command_description = command_description
         self.reason = reason
         super().__init__(f"Failed to execute database command: {command_description}. Reason: {reason}")
+
+class UserError(Exception):
+    """
+    Exception raised when a database command fails to execute.
+
+    Attributes:
+        action (str): A word describing process that failed (create/authenticate)
+        reason (str): The reason the command failed (can be the exception message itself).
+    """
+
+    def __init__(self, action, id, username, password, error):
+        self.action = action
+        self.id = id
+        self.username = username
+        self.password = password
+        self.error = error
+        super().__init__(f"Failed to {action} user with ID: {id}, username: {username}, password: {password} because {error}")
